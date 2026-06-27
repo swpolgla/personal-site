@@ -1,8 +1,11 @@
 :root {
-  --ink: #111111;
-  --paper: #fafaf7;
-  --line: #e3e1db;
-  --muted: #6c6a64;
+  --ink: #d8d6d1;
+  --paper: #161819;
+  --paper-raised: #1e2123;
+  --line: #2a2d30;
+  --muted: #7a7873;
+  --accent: #b8b6b1;
+  --shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 18px 40px rgba(0,0,0,0.55);
   --pad: clamp(1rem, 5vw, 3rem);
 }
 
@@ -19,6 +22,8 @@ body {
   color: var(--ink);
   font-family: ui-serif, Georgia, "Times New Roman", serif;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .masthead {
@@ -28,10 +33,11 @@ body {
 .wordmark {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.85rem;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.32em;
   text-transform: uppercase;
-  color: var(--ink);
+  color: var(--accent);
   text-decoration: none;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.4);
 }
 
 .frame {
@@ -44,17 +50,20 @@ body {
 .frame figure {
   margin: 0;
   max-width: 38rem;
+  background: var(--paper-raised);
+  padding: 1px;
 }
 
 .frame img {
   max-width: 100%;
   height: auto;
   display: block;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.08);
+  filter: contrast(1.03) saturate(0.92);
+  box-shadow: var(--shadow);
 }
 
 .colophon {
-  padding: 0 var(--pad) var(--pad);
+  padding: var(--pad) var(--pad) var(--pad);
   border-top: 1px solid var(--line);
 }
 
