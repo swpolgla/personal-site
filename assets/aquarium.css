@@ -1,0 +1,240 @@
+/* Aquarium scene styling. Scoped under .aq-* / #aq- to avoid clashing. */
+
+.aq-stage {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #02030a;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.aq-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+/* ——— Clock centerpiece ——— */
+.aq-clock {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 4;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+}
+
+.aq-clock__time {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: clamp(2rem, 8vw, 5.5rem);
+  letter-spacing: 0.06em;
+  line-height: 1;
+  color: var(--aq-clock-ink, #eaf6ff);
+  transition: color 1.5s ease;
+}
+
+.aq-clock__date {
+  margin-top: 0.5em;
+  font-family: ui-serif, Georgia, serif;
+  font-size: clamp(0.85rem, 2vw, 1.1rem);
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--aq-clock-sub, #cfecff);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.65), 0 0 14px rgba(0,0,0,0.45);
+  transition: color 1.5s ease;
+}
+
+/* hourly progress ring + sun/moon glyph */
+.aq-clock__ring {
+  position: relative;
+  margin: 1.6rem auto 0;
+  width: clamp(180px, 38vw, 320px);
+  height: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  overflow: visible;
+}
+.aq-clock__fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #ffd070, #7fd8ff);
+  border-radius: 4px;
+  transition: background 1.5s ease;
+}
+.aq-clock__glyph {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  margin: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffe6a0, #f2a83c);
+  box-shadow: 0 0 12px rgba(255, 210, 120, 0.7);
+  transition: background 0.8s ease, box-shadow 0.8s ease;
+}
+
+/* ——— Helm of Tides (ship's-wheel time control) ——— */
+.aq-helm {
+  position: absolute;
+  z-index: 6;
+  pointer-events: auto;
+}
+.aq-helm__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 1rem 1.2rem 1.1rem;
+  background: rgba(8, 12, 22, 0.82);
+  border: 1px solid rgba(200, 220, 255, 0.18);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(6px);
+  transform: translate(-50%, -50%);
+  animation: aq-rise 0.32s ease;
+}
+@keyframes aq-rise {
+  from { opacity: 0; transform: translate(-50%, -46%) scale(0.94); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.aq-helm__title {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: #b9d4e8;
+}
+
+.aq-helm__dial {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  touch-action: none;
+  cursor: grab;
+}
+.aq-helm__dial.is-grabbing { cursor: grabbing; }
+
+.aq-helm__dial-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(60, 90, 120, 0.35), rgba(10, 16, 28, 0.6) 70%),
+    conic-gradient(from -90deg, #2a3a52, #1a2740, #2a3a52, #1a2740, #2a3a52);
+  border: 2px solid rgba(200, 220, 255, 0.25);
+  box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.55);
+}
+.aq-helm__mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.6em;
+  margin: -0.8em;
+  text-align: center;
+  transform: rotate(var(--a)) translateY(-58px) rotate(calc(var(--a) * -1));
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.7rem;
+  color: #cde0ee;
+  opacity: 0.8;
+}
+.aq-helm__glyph {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 42px;
+  height: 42px;
+  margin: -21px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffe6a0, #f2a83c);
+  box-shadow: 0 0 18px rgba(255, 210, 120, 0.7);
+  transition: background 0.6s, box-shadow 0.6s;
+}
+.aq-helm__knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px;
+  border-radius: 50%;
+  background: #ffd070;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  transform: translate(0, -58px) rotate(0deg);
+  transform-origin: 9px 67px;
+  pointer-events: none;
+}
+
+.aq-helm__speeds {
+  display: flex;
+  gap: 0.4rem;
+}
+.aq-helm__speed {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: #8fa6b8;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(200, 220, 255, 0.15);
+  border-radius: 999px;
+  padding: 0.3em 0.85em;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.aq-helm__speed:hover { color: #e2f1fb; }
+.aq-helm__speed.is-on {
+  color: #061018;
+  background: #ffd070;
+  border-color: #ffd070;
+}
+
+.aq-helm__release {
+  margin-top: 0.2rem;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #9fb6c8;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(159, 182, 200, 0.4);
+}
+.aq-helm__release:hover { color: #e2f1fb; }
+
+/* ——— Hint ——— */
+.aq-hint {
+  position: absolute;
+  bottom: 0.7rem;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  z-index: 5;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  color: rgba(220, 235, 248, 0.5);
+  text-align: center;
+  pointer-events: none;
+  transition: opacity 2s ease;
+  max-width: 92vw;
+}
+.aq-hint.is-faded { opacity: 0; }
+
+@media (max-width: 600px) {
+  .aq-helm__dial { width: 124px; height: 124px; }
+  .aq-helm__mark { transform: rotate(var(--a)) translateY(-48px) rotate(calc(var(--a) * -1)); }
+  .aq-helm__knob { transform-origin: 9px 56px; transform: translate(0, -48px); }
+}

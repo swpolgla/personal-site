@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aquarium — Polglase</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/assets/aquarium.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="wordmark" href="/">Polglase</a>
+    <nav class="tabs" aria-label="Sections">
+      <a class="tabs__tab" href="/">Home</a>
+      <a class="tabs__tab is-active" href="/aquarium" aria-current="page">Aquarium</a>
+    </nav>
+  </header>
+
+  <main class="aq-stage">
+    <canvas id="aq" class="aq-canvas"></canvas>
+
+    <div id="aq-clock" class="aq-clock" aria-live="polite">
+      <div class="aq-clock__time" id="aq-time">00:00:00</div>
+      <div class="aq-clock__date" id="aq-date"></div>
+      <div class="aq-clock__ring" aria-hidden="true">
+        <div class="aq-clock__fill" id="aq-fill"></div>
+        <div class="aq-clock__glyph" id="aq-glyph-ring"></div>
+      </div>
+    </div>
+
+    <div id="aq-helm" class="aq-helm" hidden>
+      <div class="aq-helm__card">
+        <div class="aq-helm__title">Helm of Tides</div>
+        <div class="aq-helm__dial" id="aq-dial">
+          <div class="aq-helm__dial-face">
+            <span class="aq-helm__mark" style="--a:0deg">12</span>
+            <span class="aq-helm__mark" style="--a:90deg">3</span>
+            <span class="aq-helm__mark" style="--a:180deg">6</span>
+            <span class="aq-helm__mark" style="--a:270deg">9</span>
+            <div class="aq-helm__glyph" id="aq-glyph"></div>
+          </div>
+          <div class="aq-helm__knob" id="aq-knob"></div>
+        </div>
+        <div class="aq-helm__speeds" role="group" aria-label="Time speed">
+          <button class="aq-helm__speed is-on" data-speed="1">1×</button>
+          <button class="aq-helm__speed" data-speed="60">60×</button>
+          <button class="aq-helm__speed" data-speed="2880">Sun</button>
+        </div>
+        <button class="aq-helm__release" id="aq-release">Release the helm</button>
+      </div>
+    </div>
+
+    <p class="aq-hint" id="aq-hint">Tap the depths to ripple the sand. Steer the wreck&rsquo;s wheel to command the tide.</p>
+  </main>
+
+  <footer class="colophon">
+    <small>&copy; <time datetime="2026">2026</time> Steven W. Polglase II</small>
+  </footer>
+
+  <script type="module" src="/assets/aquarium.js"></script>
+</body>
+</html>
