@@ -1378,7 +1378,10 @@ function drawNewBottomCreatures(ctx,phase){
     const y=sandTopY(c.x)-5,bob=Math.sin(c.ph)*1.2;
     ctx.save();ctx.translate(c.x,y+bob);ctx.scale(c.dir,1);
     ctx.strokeStyle=lit?'#bd6d42':'#70442f';ctx.lineWidth=2;
-    for(const sy of [-1,1])for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(i*3,sy*2);ctx.lineTo(7+i*3,sy*(5+i));ctx.stroke();}
+    for(let i=0;i<4;i++){
+      const x=i*4-2,step=Math.sin(c.ph+i)*1.4;
+      ctx.beginPath();ctx.moveTo(x,1);ctx.lineTo(x+3,5+step);ctx.lineTo(x+8,5.5-step*.4);ctx.stroke();
+    }
     ctx.fillStyle=lit?'#a77b62':'#5e4a3f';ctx.beginPath();ctx.arc(-4,-4,c.shell,0,TAU);ctx.fill();
     ctx.strokeStyle='rgba(45,30,25,.5)';ctx.beginPath();ctx.arc(-4,-4,c.shell*.55,0,TAU);ctx.stroke();
     ctx.fillStyle=lit?'#d77c48':'#7d4933';ctx.beginPath();ctx.ellipse(7,0,8,5,0,0,TAU);ctx.fill();
