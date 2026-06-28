@@ -55,6 +55,31 @@ const mix3 = (a, b, t) => [lerp(a[0],b[0],t), lerp(a[1],b[1],t), lerp(a[2],b[2],
 const rgb = c => `rgb(${c[0]|0},${c[1]|0},${c[2]|0})`;
 const rgba = (c, a) => `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
 
+function updateEntrance(c, dt) {
+  if (c.spawnAlpha == null) c.spawnAlpha = 1;
+  if (!c.spawnFadeDuration) return;
+  c.spawnFadeTime += dt;
+  c.spawnAlpha = clamp(c.spawnFadeTime / c.spawnFadeDuration, 0, 1);
+  if (c.spawnAlpha >= 1) c.spawnFadeDuration = 0;
+}
+
+function setEdgeEntrance(c) {
+  const fromLeft = Math.random() < 0.5;
+  const margin = c instanceof Whale ? c.L * 0.7 : Math.max(40, c.L || 40);
+  c.x = fromLeft ? -margin : W + margin;
+  c.heading = fromLeft ? 0 : Math.PI;
+  if ('wander' in c) c.wander = c.heading;
+  c.spawnAlpha = 1;
+  c.spawnFadeTime = 0;
+  c.spawnFadeDuration = 0;
+}
+
+function setFadeEntrance(c) {
+  c.spawnAlpha = 0;
+  c.spawnFadeTime = 0;
+  c.spawnFadeDuration = rand(2, 4);
+}
+
 /* ============================================================
    3. CANVAS + STAGE SETUP
    ============================================================ */
@@ -351,6 +376,7 @@ function drawFin(ctx, L, H, type, t, side) {
 
 function applyPattern(ctx, L, H, type, palette, glow, nightBoost, spots) {
   const hx = L/2, hh = H/2;
+  const alpha = ctx.globalAlpha;
   ctx.save();
   drawBodyPath(ctx, L, H, 'oval'); ctx.clip();
   switch (type) {
@@ -359,10 +385,10 @@ function applyPattern(ctx, L, H, type, palette, glow, nightBoost, spots) {
       ctx.fillStyle = palette[1] || '#000';
       const n = 5;
       for (let i=0;i<n;i++){
-        ctx.globalAlpha = 0.7;
+        ctx.globalAlpha = alpha * 0.7;
         ctx.fillRect(-hx + i*(L/n), -hh, L/n*0.35, H);
       }
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = alpha;
       break;
     }
     case 'spots': {
@@ -370,10 +396,10 @@ function applyPattern(ctx, L, H, type, palette, glow, nightBoost, spots) {
       ctx.fillStyle = palette[1] || '#000';
       const pts = spots || [];
       for (let i = 0; i < Math.min(6, pts.length); i++) {
-        ctx.globalAlpha = 0.8;
+        ctx.globalAlpha = alpha * 0.8;
         ctx.beginPath(); ctx.arc(pts[i][0] * hx, pts[i][1] * hh, H * 0.12, 0, TAU); ctx.fill();
       }
-      ctx.globalAlpha = 1; break;
+      ctx.globalAlpha = alpha; break;
     }
     case 'gradient': {
       const g = ctx.createLinearGradient(0,-hh,0,hh);
@@ -421,6 +447,7 @@ class Fish {
     else                        { this.bandTop = surfaceY + span*0.30; this.bandBot = surfaceY + span*0.78; }
   }
   update(dt, phase) {
+    updateEntrance(this, dt);
     // nocturnal fish only swim while it is dark
     let visible = true;
     if (this.spec.nocturnal) visible = !phase.isDay;
@@ -488,6 +515,7 @@ class Fish {
     const right = Math.cos(this.heading) >= 0;
     const wob = Math.sin(this.swimPhase) * this.spec.wobble.amp;
     ctx.save();
+    ctx.globalAlpha *= this.spawnAlpha == null ? 1 : this.spawnAlpha;
     ctx.translate(this.x, this.y);
     ctx.rotate(Math.sin(this.heading) * 0.25 * 0); // keep upright; sx flip for direction
     ctx.scale(right ? -1 : 1, 1);
@@ -548,6 +576,7 @@ class Whale {
     this.spouts = [];                        // active spout particles
   }
   update(dt, phase) {
+    updateEntrance(this, dt);
     // wander steering — slow, dignified
     this.wanderTimer -= dt;
     if (this.wanderTimer <= 0) { this.wander += rand(-0.18, 0.18); this.wanderTimer = rand(2.5, 6); }
@@ -607,15 +636,17 @@ class Whale {
     return cur + d;
   }
   draw(ctx, phase) {
+    const alpha = this.spawnAlpha == null ? 1 : this.spawnAlpha;
     const right = this.headingIsRight();
     const lit = phase.isDay;
     // spout mist (drawn behind the body so the whale appears to be exhaling)
     for (const s of this.spouts) {
-      const a = clamp(s.life, 0, 1) * 0.5;
+      const a = clamp(s.life, 0, 1) * 0.5 * alpha;
       ctx.fillStyle = `rgba(220,235,245,${a})`;
       ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
     }
     ctx.save();
+    ctx.globalAlpha *= alpha;
     ctx.translate(this.x, this.y);
     ctx.rotate(clamp(Math.sin(this.heading) * 0.18, -0.16, 0.16));
     ctx.scale(right ? 1 : -1, 1);
@@ -723,6 +754,7 @@ class SpecialSwimmer {
     this.turn = rand(-0.12,0.12); this.breath = rand(7,15);
   }
   update(dt, phase) {
+    updateEntrance(this, dt);
     if (this.kind === 'squid' && phase.isDay) { this._vis=false; }
     else this._vis=true;
     this.phase += dt * (this.kind==='squid'?4.2:1.8);
@@ -748,7 +780,7 @@ class SpecialSwimmer {
   draw(ctx, phase) {
     if(this._vis===false)return;
     const right=Math.cos(this.heading)>=0, L=this.L, flap=Math.sin(this.phase);
-    ctx.save(); ctx.translate(this.x,this.y); ctx.scale(right?1:-1,1);
+    ctx.save(); ctx.globalAlpha *= this.spawnAlpha == null ? 1 : this.spawnAlpha; ctx.translate(this.x,this.y); ctx.scale(right?1:-1,1);
     if(this.kind==='turtle'){
       const skin=phase.isDay?'#78967a':'#405a4c';
       const shell=phase.isDay?'#617c55':'#344a3c';
@@ -834,22 +866,36 @@ function whalePresent() {
 
 // Spawn-weighted creature factory. Called for the initial seed and on each
 // respawn. ~WHALE_CHANCE to spawn a whale, but never more than one at once.
-function spawnCreature() {
-  const roll=Math.random();
-  if(!whalePresent()){
-    if(roll<0.025)return new SpecialSwimmer('turtle');
-    if(roll<0.040)return new SpecialSwimmer('manta');
-    if(roll<0.065)return new Whale();
+function applyRespawnEntrance(c) {
+  let fadeChance = 0.45;
+  if (c instanceof Whale) fadeChance = 0;
+  else if (c instanceof SpecialSwimmer) {
+    if (c.kind === 'turtle' || c.kind === 'manta') fadeChance = 0;
+    else if (c.kind === 'seahorse') fadeChance = 0.7;
   }
-  if(roll<0.085)return new SpecialSwimmer('seahorse');
-  if(roll<0.10)return new SpecialSwimmer('squid');
+  if (Math.random() < fadeChance) setFadeEntrance(c);
+  else setEdgeEntrance(c);
+  return c;
+}
+
+function spawnCreature(mode) {
+  const roll=Math.random();
+  let c;
+  if(!whalePresent()){
+    if(roll<0.025)c = new SpecialSwimmer('turtle');
+    else if(roll<0.040)c = new SpecialSwimmer('manta');
+    else if(roll<0.065)c = new Whale();
+  }
+  if(!c && roll<0.085)c = new SpecialSwimmer('seahorse');
+  if(!c && roll<0.10)c = new SpecialSwimmer('squid');
   const common=FISH_SPECIES.filter(s=>!s.rare);
-  return new Fish(Math.random()<.035?FISH_SPECIES.find(s=>s.name==='lionfish'):pick(common));
+  if(!c)c = new Fish(Math.random()<.035?FISH_SPECIES.find(s=>s.name==='lionfish'):pick(common));
+  return mode === 'respawn' ? applyRespawnEntrance(c) : c;
 }
 
 function seedFish() {
   fish = [];
-  for (let i = 0; i < TUNING.fishCount; i++) fish.push(spawnCreature());
+  for (let i = 0; i < TUNING.fishCount; i++) fish.push(spawnCreature('initial'));
 }
 
 /* ============================================================
@@ -1703,7 +1749,7 @@ function frame(now) {
   ctx.save();
   // update all creatures; if one signals respawn (off-screen), re-roll its slot
   for (let i = 0; i < fish.length; i++) {
-    if (fish[i].update(dt, phase) === 'respawn') fish[i] = spawnCreature();
+    if (fish[i].update(dt, phase) === 'respawn') fish[i] = spawnCreature('respawn');
   }
   // Large visitors pass first, behind the smaller school.
   for (const c of fish) if (c instanceof Whale || c instanceof SpecialSwimmer) c.draw(ctx, phase);
