@@ -37,6 +37,9 @@ const FISH_SPECIES = [
   { name: 'puffer',    body:'round',   tail:'round',  fins:'fan',     pattern:'spots',    palette:['#e8c66a','#9a6b2a'], size:[26,42], speed:[0.3,0.55],depth:'bottom',wobble:{freq:0.07,amp:0.35} },
   { name: 'midnight',  body:'torpedo', tail:'forked', fins:'flowing', pattern:'gradient', palette:['#3a4a8a','#10183a'], size:[20,34], speed:[0.6,1.05],depth:'mid',  wobble:{freq:0.12,amp:0.48}, nocturnal:true },
   { name: 'sunfin',    body:'oval',    tail:'forked', fins:'spiky',   pattern:'stripes',  palette:['#ffd66b','#e0742c'], size:[20,32], speed:[0.7,1.2], depth:'top',  wobble:{freq:0.14,amp:0.5}  },
+  { name: 'clownfish', body:'oval',    tail:'round',  fins:'fan',     pattern:'stripes',  palette:['#f47b35','#fff1d6'], size:[20,32], speed:[0.45,0.8], depth:'bottom', wobble:{freq:0.12,amp:0.5}, habitat:'anemone' },
+  { name: 'blue-tang', body:'oval',    tail:'crescent',fins:'spiky',  pattern:'twotone',  palette:['#247bc1','#f3cf3e'], size:[23,36], speed:[0.75,1.25], depth:'mid', wobble:{freq:0.14,amp:0.5} },
+  { name: 'lionfish',  body:'oval',    tail:'round',  fins:'spiky',   pattern:'stripes',  palette:['#f2dfc5','#9e4d36'], size:[30,46], speed:[0.25,0.48], depth:'bottom', wobble:{freq:0.07,amp:0.38}, rare:true },
 ];
 
 /* ============================================================
@@ -425,6 +428,17 @@ class Fish {
     this.wanderTimer -= dt;
     if (this.wanderTimer <= 0) { this.wander += rand(-0.9,0.9); this.wanderTimer = rand(0.6,2.2); }
     let desired = this.wander;
+    // Clownfish gently orbit their nearest anemone rather than crossing the
+    // entire tank. Disturbance avoidance below always takes precedence.
+    if (this.spec.habitat === 'anemone' && scene.anemones.length) {
+      let home = scene.anemones[0], best = Infinity;
+      for (const a of scene.anemones) {
+        const d = Math.hypot(this.x - a.x, this.y - (a.y - 24));
+        if (d < best) { best = d; home = a; }
+      }
+      if (best > 70) desired = Math.atan2((home.y - 24) - this.y, home.x - this.x);
+      else desired += Math.sin(this.swimPhase * 0.15) * 0.35;
+    }
     // avoidance from disturbances
     let run = 0, ay = 0;
     const R = TUNING.avoidRadius;
@@ -689,6 +703,120 @@ class Whale {
   }
 }
 
+/* Large and unusually-shaped visitors share one compact motion model, while
+   retaining dedicated silhouettes. Turtle/manta count as "large"; seahorse
+   and squid use the same plumbing but remain small and rare. */
+class SpecialSwimmer {
+  constructor(kind) {
+    this.kind = kind;
+    const cfg = {
+      turtle:   { size:[105,145], speed:[9,15], depth:[0.14,0.68] },
+      manta:    { size:[125,180], speed:[12,19], depth:[0.34,0.78] },
+      seahorse: { size:[28,42],   speed:[4,8], depth:[0.48,0.82] },
+      squid:    { size:[42,62],   speed:[10,18], depth:[0.26,0.76] },
+    }[kind];
+    this.L = rand(...cfg.size); this.baseSpeed = rand(...cfg.speed);
+    this.bandTop = surfaceY + (sandY-surfaceY)*cfg.depth[0];
+    this.bandBot = surfaceY + (sandY-surfaceY)*cfg.depth[1];
+    this.x = rand(0,W); this.y = rand(this.bandTop,this.bandBot);
+    this.heading = pick([0,Math.PI]); this.phase = rand(0,TAU);
+    this.turn = rand(-0.12,0.12); this.breath = rand(7,15);
+  }
+  update(dt, phase) {
+    if (this.kind === 'squid' && phase.isDay) { this._vis=false; }
+    else this._vis=true;
+    this.phase += dt * (this.kind==='squid'?4.2:1.8);
+    this.heading += Math.sin(this.phase*.3)*this.turn*dt;
+    let speed = this.baseSpeed;
+    if (this.kind === 'squid' && Math.sin(this.phase)>.82) speed *= 3;
+    if (this.kind === 'seahorse') {
+      this.x += Math.sin(this.phase*.55)*3*dt;
+      this.y += Math.sin(this.phase*.8)*2*dt;
+    } else {
+      this.x += Math.cos(this.heading)*speed*dt;
+      this.y += Math.sin(this.heading)*speed*.3*dt;
+    }
+    if (this.y<this.bandTop) this.y+=(this.bandTop-this.y)*dt;
+    if (this.y>this.bandBot) this.y-=(this.y-this.bandBot)*dt;
+    if (this.kind==='turtle') {
+      this.breath-=dt;
+      if(this.breath<0){ this.y+=(surfaceY+28-this.y)*dt*.25; if(this.y<surfaceY+42){spawnBubble(this.x,this.y,3,true);this.breath=rand(10,18);} }
+    }
+    const m=this.L;
+    if(this.x < -m || this.x > W+m) return 'respawn';
+  }
+  draw(ctx, phase) {
+    if(this._vis===false)return;
+    const right=Math.cos(this.heading)>=0, L=this.L, flap=Math.sin(this.phase);
+    ctx.save(); ctx.translate(this.x,this.y); ctx.scale(right?1:-1,1);
+    if(this.kind==='turtle'){
+      const skin=phase.isDay?'#78967a':'#405a4c';
+      const shell=phase.isDay?'#617c55':'#344a3c';
+      // Four tapered flippers begin well inside the shell rim. Drawing the
+      // roots first and the carapace over them makes the shoulder and hip
+      // joints read as connected anatomy rather than floating paddles.
+      ctx.fillStyle=skin;
+      for(const s of [-1,1]){
+        const frontWave=flap*L*.025*s;
+        ctx.beginPath();
+        ctx.moveTo(L*.22,s*L*.09);
+        ctx.bezierCurveTo(L*.18,s*L*.18,L*.02,s*L*.32+frontWave,-L*.1,s*L*.39+frontWave);
+        ctx.bezierCurveTo(-L*.13,s*L*.34,-L*.01,s*L*.2,L*.16,s*L*.11);
+        ctx.closePath();ctx.fill();
+
+        const rearWave=flap*L*.012*s;
+        ctx.beginPath();
+        ctx.moveTo(-L*.18,s*L*.09);
+        ctx.bezierCurveTo(-L*.25,s*L*.13,-L*.39,s*L*.2+rearWave,-L*.43,s*L*.18+rearWave);
+        ctx.bezierCurveTo(-L*.42,s*L*.12,-L*.31,s*L*.08,-L*.21,s*L*.07);
+        ctx.closePath();ctx.fill();
+      }
+      // Neck and rounded head project clearly beyond the shell.
+      ctx.beginPath();ctx.ellipse(L*.31,0,L*.15,L*.075,0,0,TAU);ctx.fill();
+      ctx.beginPath();ctx.ellipse(L*.43,0,L*.105,L*.09,0,0,TAU);ctx.fill();
+      // Domed, patterned shell sits above the limbs.
+      ctx.fillStyle=shell;
+      ctx.beginPath();ctx.ellipse(0,0,L*.34,L*.225,0,0,TAU);ctx.fill();
+      ctx.strokeStyle=phase.isDay?'rgba(32,58,38,.62)':'rgba(14,28,22,.7)';ctx.lineWidth=2;
+      ctx.beginPath();ctx.ellipse(0,0,L*.27,L*.17,0,0,TAU);ctx.stroke();
+      ctx.beginPath();
+      for(let i=0;i<6;i++){
+        const a=i/6*TAU,px=Math.cos(a)*L*.16,py=Math.sin(a)*L*.105;
+        if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+      }
+      ctx.closePath();ctx.stroke();
+      for(let i=0;i<6;i++){
+        const a=i/6*TAU;ctx.beginPath();ctx.moveTo(Math.cos(a)*L*.16,Math.sin(a)*L*.105);
+        ctx.lineTo(Math.cos(a)*L*.27,Math.sin(a)*L*.17);ctx.stroke();
+      }
+      // Tiny tail and friendly face finish the turtle silhouette.
+      ctx.fillStyle=skin;ctx.beginPath();ctx.moveTo(-L*.33,-L*.035);ctx.lineTo(-L*.43,0);ctx.lineTo(-L*.33,L*.035);ctx.fill();
+      ctx.fillStyle='#17231d';ctx.beginPath();ctx.arc(L*.47,-L*.035,L*.013,0,TAU);ctx.fill();
+      ctx.strokeStyle='rgba(20,35,26,.65)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(L*.475,L*.015,L*.035,.25,1.4);ctx.stroke();
+    } else if(this.kind==='manta'){
+      ctx.fillStyle=phase.isDay?'#354f61':'#20303d';
+      ctx.beginPath();ctx.moveTo(L*.46,0);ctx.quadraticCurveTo(L*.08,-L*(.38+flap*.035),-L*.34,-L*.08);ctx.quadraticCurveTo(-L*.12,0,-L*.34,L*.08);ctx.quadraticCurveTo(L*.08,L*(.38+flap*.035),L*.46,0);ctx.fill();
+      ctx.strokeStyle='#243642';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-L*.3,0);ctx.quadraticCurveTo(-L*.55,flap*4,-L*.72,flap*7);ctx.stroke();
+      ctx.fillStyle='#101820';for(const y of [-L*.035,L*.035]){ctx.beginPath();ctx.arc(L*.34,y,L*.012,0,TAU);ctx.fill();}
+    } else if(this.kind==='seahorse'){
+      ctx.strokeStyle=phase.isDay?'#e1a746':'#8a6838';ctx.lineWidth=L*.18;ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(0,-L*.35);ctx.bezierCurveTo(-L*.1,-L*.08,L*.12,L*.08,0,L*.25);ctx.bezierCurveTo(-L*.12,L*.42,-L*.22,L*.22,-L*.08,L*.18);ctx.stroke();
+      ctx.fillStyle=phase.isDay?'#f0bd58':'#9b7840';ctx.beginPath();ctx.ellipse(L*.08,-L*.38,L*.15,L*.1,-.25,0,TAU);ctx.fill();
+      ctx.beginPath();ctx.moveTo(L*.18,-L*.4);ctx.lineTo(L*.35,-L*.34);ctx.lineTo(L*.17,-L*.3);ctx.fill();
+      ctx.fillStyle='#182018';ctx.beginPath();ctx.arc(L*.13,-L*.42,1.5,0,TAU);ctx.fill();
+    } else {
+      const glow=phase.isDay?.12:.55;ctx.shadowBlur=18;ctx.shadowColor=`rgba(90,245,220,${glow})`;
+      ctx.fillStyle=phase.isDay?'#6b91a5':'#58d8c5';ctx.beginPath();ctx.ellipse(0,0,L*.32,L*.18,0,0,TAU);ctx.fill();
+      ctx.beginPath();ctx.moveTo(L*.24,-L*.14);ctx.lineTo(L*.5,0);ctx.lineTo(L*.24,L*.14);ctx.fill();
+      ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=2;
+      for(let i=-2;i<=2;i++){ctx.beginPath();ctx.moveTo(-L*.25,i*3);ctx.quadraticCurveTo(-L*.5,i*5+flap*5,-L*.62,i*7);ctx.stroke();}
+      ctx.fillStyle='#bfffee';ctx.beginPath();ctx.arc(L*.13,-L*.04,2,0,TAU);ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
 function hexToRgb(h) {
   if (Array.isArray(h)) return h;
   const s = h.replace('#','');
@@ -700,15 +828,23 @@ let fish = [];
 
 // Returns true if a whale is currently in the school (at most one at a time).
 function whalePresent() {
-  for (const c of fish) if (c instanceof Whale) return true;
+  for (const c of fish) if (c instanceof Whale || (c instanceof SpecialSwimmer && (c.kind==='turtle'||c.kind==='manta'))) return true;
   return false;
 }
 
 // Spawn-weighted creature factory. Called for the initial seed and on each
 // respawn. ~WHALE_CHANCE to spawn a whale, but never more than one at once.
 function spawnCreature() {
-  if (!whalePresent() && Math.random() < WHALE_CHANCE) return new Whale();
-  return new Fish(pick(FISH_SPECIES));
+  const roll=Math.random();
+  if(!whalePresent()){
+    if(roll<0.025)return new SpecialSwimmer('turtle');
+    if(roll<0.040)return new SpecialSwimmer('manta');
+    if(roll<0.065)return new Whale();
+  }
+  if(roll<0.085)return new SpecialSwimmer('seahorse');
+  if(roll<0.10)return new SpecialSwimmer('squid');
+  const common=FISH_SPECIES.filter(s=>!s.rare);
+  return new Fish(Math.random()<.035?FISH_SPECIES.find(s=>s.name==='lionfish'):pick(common));
 }
 
 function seedFish() {
@@ -721,7 +857,8 @@ function seedFish() {
    ============================================================ */
 const scene = {
   kelp: [], ribbons: [], corals: [], anemones: [], jellies: [], starfish: [],
-  vents: [], chest: null, anchor: null, wreck: null, wreckX: 0,
+  vents: [], crabs: [], shrimp: [], octopus: null, moray: null,
+  chest: null, anchor: null, wreck: null, wreckX: 0,
 };
 
 function positionSetPieces() {
@@ -788,8 +925,17 @@ function positionSetPieces() {
   scene.jellies = [];
   for (let i = 0; i < 4; i++) scene.jellies.push({
     x: rand(0, W), y: rand(surfaceY+40, sandY-120),
-    vy: rand(4, 10), ph: rand(0,TAU), r: rand(16,26), retract: 0, hue: pick([280,200,320,160]),
+    vy: rand(4, 10), ph: rand(0,TAU), r: rand(16,26), retract: 0,
+    hue: pick([280,200,320,160]), moon: Math.random()<.45,
   });
+  scene.crabs = Array.from({length: W<640?1:3},()=>({
+    x:rand(30,W-30),dir:pick([-1,1]),ph:rand(0,TAU),shell:rand(8,12)
+  }));
+  scene.shrimp = scene.corals.slice(0,W<640?1:3).map(c=>({
+    x:c.x+rand(-12,12),y:c.y-rand(16,35),ph:rand(0,TAU)
+  }));
+  scene.octopus={x:clamp(sx-118,45,W-45),home:clamp(sx-118,45,W-45),ph:rand(0,TAU),hue:282,hide:0};
+  scene.moray={x:clamp(sx+72,40,W-40),y:sy-44,ph:rand(0,TAU),peek:0};
   seedPlankton(60);
 }
 
@@ -856,6 +1002,11 @@ function updateSetPieces(dt, phase) {
   }
   // starfish crawl
   for (const s of scene.starfish) { s.x += s.dir * 5 * dt; s.star = Math.max(0, s.star - dt*2); if (s.x<-10) s.x=W+10; if(s.x>W+10) s.x=-10; }
+  for(const c of scene.crabs){c.ph+=dt*4;c.x+=c.dir*7*dt;if(c.x<15||c.x>W-15)c.dir*=-1;}
+  for(const s of scene.shrimp)s.ph+=dt*5;
+  const o=scene.octopus;o.ph+=dt;o.x+=Math.sin(o.ph*.7)*4*dt;o.x+=(o.home-o.x)*dt*.08;
+  o.hide=Math.max(0,o.hide-dt);
+  const m=scene.moray;m.ph+=dt;m.peek=(Math.sin(m.ph*.42)>.15)?Math.min(1,m.peek+dt*.7):Math.max(0,m.peek-dt*.9);
   // vents bubbles
   for (const v of scene.vents) {
     v.t += dt;
@@ -867,6 +1018,7 @@ function hoverScenery(x, y) {
   // anemone + jelly retract on hover
   for (const a of scene.anemones) if (Math.abs(x-a.x) < 26) a.retract = 1;
   for (const j of scene.jellies) if (Math.hypot(x-j.x, y-j.y) < j.r+10) j.retract = 1;
+  if(scene.octopus&&Math.hypot(x-scene.octopus.x,y-sandTopY(scene.octopus.x))<60)scene.octopus.hide=1;
 }
 
 /* ----- draw set pieces ----- */
@@ -1172,6 +1324,41 @@ function drawStarfish(ctx, phase) {
   }
 }
 
+function drawNewBottomCreatures(ctx,phase){
+  const lit=phase.isDay;
+  // Hermit crabs: borrowed shells, eye stalks, and alternating little legs.
+  for(const c of scene.crabs){
+    const y=sandTopY(c.x)-5,bob=Math.sin(c.ph)*1.2;
+    ctx.save();ctx.translate(c.x,y+bob);ctx.scale(c.dir,1);
+    ctx.strokeStyle=lit?'#bd6d42':'#70442f';ctx.lineWidth=2;
+    for(const sy of [-1,1])for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(i*3,sy*2);ctx.lineTo(7+i*3,sy*(5+i));ctx.stroke();}
+    ctx.fillStyle=lit?'#a77b62':'#5e4a3f';ctx.beginPath();ctx.arc(-4,-4,c.shell,0,TAU);ctx.fill();
+    ctx.strokeStyle='rgba(45,30,25,.5)';ctx.beginPath();ctx.arc(-4,-4,c.shell*.55,0,TAU);ctx.stroke();
+    ctx.fillStyle=lit?'#d77c48':'#7d4933';ctx.beginPath();ctx.ellipse(7,0,8,5,0,0,TAU);ctx.fill();
+    ctx.strokeStyle=ctx.fillStyle;for(const ex of [5,10]){ctx.beginPath();ctx.moveTo(ex,-3);ctx.lineTo(ex,-9);ctx.stroke();ctx.fillStyle='#111';ctx.beginPath();ctx.arc(ex,-10,1.3,0,TAU);ctx.fill();}
+    ctx.restore();
+  }
+  // Cleaner shrimp live on coral, almost like animated punctuation.
+  for(const s of scene.shrimp){
+    ctx.save();ctx.translate(s.x,s.y+Math.sin(s.ph)*3);
+    ctx.strokeStyle=lit?'rgba(255,235,215,.9)':'rgba(190,210,205,.72)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.ellipse(0,0,6,2,0,0,TAU);ctx.stroke();
+    for(const side of [-1,1]){ctx.beginPath();ctx.moveTo(2,side);ctx.lineTo(10,side*7);ctx.stroke();ctx.beginPath();ctx.moveTo(-2,side);ctx.lineTo(-9,side*6);ctx.stroke();}
+    ctx.restore();
+  }
+  // Octopus changes colour and pulls tight to the sand when approached.
+  const o=scene.octopus,oy=sandTopY(o.x),squash=1-o.hide*.45;
+  ctx.save();ctx.translate(o.x,oy);ctx.scale(1,squash);
+  ctx.fillStyle=`hsl(${o.hue+Math.sin(o.ph)*16},${lit?52:38}%,${lit?48:31}%)`;
+  for(let i=0;i<8;i++){const a=Math.PI+(i/7)*Math.PI;ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=5;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(0,-5);ctx.quadraticCurveTo(Math.cos(a)*18,-2+Math.sin(o.ph+i)*4,Math.cos(a)*29,2);ctx.stroke();}
+  ctx.beginPath();ctx.ellipse(0,-15,16,19,0,0,TAU);ctx.fill();
+  ctx.fillStyle='#f3e8c7';for(const x of [-6,6]){ctx.beginPath();ctx.arc(x,-19,3,0,TAU);ctx.fill();ctx.fillStyle='#151515';ctx.beginPath();ctx.arc(x,-19,1.3,0,TAU);ctx.fill();ctx.fillStyle='#f3e8c7';}
+  ctx.restore();
+  // Moray remains part of the wreck: only the head and curling neck emerge.
+  const m=scene.moray,len=55*m.peek;
+  if(len>1){ctx.save();ctx.translate(m.x,m.y);ctx.strokeStyle=lit?'#67844b':'#3e5137';ctx.lineWidth=13;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(0,12);ctx.quadraticCurveTo(-8,-len*.35,len,-len*.45);ctx.stroke();ctx.fillStyle=ctx.strokeStyle;ctx.beginPath();ctx.ellipse(len,-len*.45,15,9,-.15,0,TAU);ctx.fill();ctx.fillStyle='#e3d25c';ctx.beginPath();ctx.arc(len+5,-len*.5,1.5,0,TAU);ctx.fill();ctx.restore();}
+}
+
 /* ----- Treasure chest — stylized pirate chest; lid tilts BACK about its rear edge ----- */
 // Geometric model (front elevation): the body is a rounded wood box with iron
 // bands. The lid is a domed cap that sits on top. To open, the lid pivots
@@ -1413,8 +1600,9 @@ function drawWreck(ctx, phase) {
 
 function drawJellies(ctx, phase) {
   for (const j of scene.jellies) {
-    const glow = phase.isDay ? 0.25 : 0.7;
+    const glow = phase.isDay ? 0.25 : (j.moon ? 0.95 : 0.7);
     ctx.save(); ctx.translate(j.x, j.y);
+    if(j.moon){j.hue=205;ctx.globalCompositeOperation=phase.isDay?'source-over':'lighter';}
     const g = ctx.createRadialGradient(0,0,0,0,0,j.r*1.8);
     g.addColorStop(0, `hsla(${j.hue},80%,70%,${glow*0.8})`);
     g.addColorStop(1, 'rgba(0,0,0,0)');
@@ -1422,6 +1610,10 @@ function drawJellies(ctx, phase) {
     // bell
     ctx.fillStyle = `hsla(${j.hue},70%,72%,${0.5 + glow*0.3})`;
     ctx.beginPath(); ctx.arc(0,0,j.r,Math.PI,0); ctx.closePath(); ctx.fill();
+    if(j.moon){
+      ctx.strokeStyle=`rgba(225,248,255,${phase.isDay?.35:.8})`;ctx.lineWidth=1;
+      for(let i=-1;i<=1;i++){ctx.beginPath();ctx.arc(i*j.r*.28,-j.r*.18,j.r*.22,0,TAU);ctx.stroke();}
+    }
     // tentacles
     ctx.strokeStyle = `hsla(${j.hue},70%,70%,${0.5})`; ctx.lineWidth=1.5;
     for (let i=0;i<6;i++){
@@ -1513,10 +1705,10 @@ function frame(now) {
   for (let i = 0; i < fish.length; i++) {
     if (fish[i].update(dt, phase) === 'respawn') fish[i] = spawnCreature();
   }
-  // whale pass first (behind small fish for depth)
-  for (const c of fish) if (c instanceof Whale) c.draw(ctx, phase);
+  // Large visitors pass first, behind the smaller school.
+  for (const c of fish) if (c instanceof Whale || c instanceof SpecialSwimmer) c.draw(ctx, phase);
   // small fish on top
-  for (const c of fish) if (!(c instanceof Whale)) c.draw(ctx, phase);
+  for (const c of fish) if (c instanceof Fish) c.draw(ctx, phase);
   ctx.restore();
 
   // sand (with contact shadow under the wreck) sits on top, half-burying set pieces
@@ -1527,6 +1719,7 @@ function frame(now) {
   drawStarfish(ctx, phase);
   drawWreck(ctx, phase);
   drawChest(ctx, phase);
+  drawNewBottomCreatures(ctx, phase);
   drawForegroundSandDetails(ctx, phase);
   drawJellies(ctx, phase);
 
