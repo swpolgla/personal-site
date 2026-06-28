@@ -1042,7 +1042,8 @@ function updateSetPieces(dt, phase) {
   for (const j of scene.jellies) {
     j.ph += dt * 1.2;
     j.y -= j.vy * dt; j.x += Math.sin(j.ph*0.5)*4*dt;
-    if (j.y < surfaceY + 30) j.y = sandY - 30;
+    if (j.y < surfaceY + 30) { j.y = surfaceY + 30; j.vy = -Math.abs(j.vy); }
+    if (j.y > sandY - 30) { j.y = sandY - 30; j.vy = Math.abs(j.vy); }
     if (j.x<0) j.x+=W; if(j.x>W) j.x-=W;
     j.retract = Math.max(0, j.retract - dt);
   }
