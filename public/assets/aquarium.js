@@ -93,6 +93,15 @@ const TUNING = {
   avoidRadius: 95,   // px — how far fish feel a disturbance
   avoidStrength: 7,  // heading radians-ish influence
 };
+const JUMP_TUNING = {
+  maxDepth: 60,          // fish centre must be no farther below the surface
+  chaseRadius: 0.85,     // fraction of the normal pointer avoidance radius
+  gravity: 520,          // px/s²
+  clearance: 28,        // minimum height reached above the surface
+  horizontalMomentum: 1.15,
+  splashLifetime: 0.75,
+  cooldown: 1.4,
+};
 
 // — Whale rarity/size tuning (exposed for easy editing) —
 // The whale is a rare, much larger creature that shares the fish[] array but
@@ -105,6 +114,7 @@ const WHALE_AVOID_RADIUS = 140;     // gentle, large detection radius
 const WHALE_AVOID_STRENGTH = 0.55;  // tiny response — majestic, not startled
 
 function resize() {
+  const jumpingFish = typeof fish === 'undefined' ? [] : fish.filter(c => c instanceof Fish && c.jump);
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   const r = stage.getBoundingClientRect();
   W = r.width; H = r.height;
@@ -116,6 +126,8 @@ function resize() {
   TUNING.fishCount = (W < 640 || H < 520) ? 12 : 24;
 
   positionSetPieces();
+  // A changed waterline invalidates an in-flight ballistic path.
+  for (const c of jumpingFish) c.finishJump();
 }
 
 /* ============================================================
@@ -216,6 +228,7 @@ function onLeave() { pointer.active = false; pointer.x = pointer.y = -999; }
    7. PARTICLES — bubbles & plankton (object-pooled)
    ============================================================ */
 const bubbles = [];
+const splashes = [];
 function spawnBubble(x, y, n = 1, big = false) {
   for (let i = 0; i < n; i++) {
     bubbles.push({
@@ -227,6 +240,24 @@ function spawnBubble(x, y, n = 1, big = false) {
   if (bubbles.length > 240) bubbles.splice(0, bubbles.length - 240);
 }
 function spawnBubbleAt(x,y,n,big){ spawnBubble(x,y,n,big); }
+
+function surfaceHeightAt(x) {
+  return surfaceY + Math.sin(x*0.02 + Time.hour*1.5) * 3 + Math.sin(x*0.05) * 1.5;
+}
+
+function spawnSplash(x, strength = 1) {
+  const y = surfaceHeightAt(x);
+  splashes.push({ type:'foam', x, y, r:4, life:1, maxLife:JUMP_TUNING.splashLifetime });
+  const count = Math.round(5 + strength * 4);
+  for (let i = 0; i < count; i++) {
+    splashes.push({
+      type:'drop', x:x+rand(-5,5), y:y-2, vx:rand(-55,55)*strength,
+      vy:rand(-150,-70)*strength, r:rand(1.2,2.6), life:1,
+      maxLife:JUMP_TUNING.splashLifetime,
+    });
+  }
+  if (splashes.length > 90) splashes.splice(0, splashes.length - 90);
+}
 
 const plankton = [];
 function seedPlankton(n) {
@@ -257,6 +288,18 @@ function updateParticles(dt) {
     const r = ripples[i];
     r.r += 70 * dt; r.life -= dt * 0.8;
     if (r.life <= 0 || r.r > r.max) ripples.splice(i,1);
+  }
+  for (let i = splashes.length - 1; i >= 0; i--) {
+    const s = splashes[i];
+    s.life -= dt / s.maxLife;
+    if (s.type === 'foam') {
+      s.r += 55 * dt;
+      s.y = surfaceHeightAt(s.x);
+    } else {
+      s.x += s.vx * dt; s.y += s.vy * dt;
+      s.vy += JUMP_TUNING.gravity * 0.85 * dt;
+    }
+    if (s.life <= 0) splashes.splice(i, 1);
   }
   for (let i = disturbances.length - 1; i >= 0; i--) {
     disturbances[i].life -= dt * 1.7;
@@ -435,6 +478,8 @@ class Fish {
     this.wander = rand(0, TAU);
     this.wanderTimer = rand(0.4, 1.6);
     this.startled = 0;
+    this.jump = null;
+    this.jumpCooldown = 0;
     this.palette = spec.palette.slice();
     // Cached spot coordinates (fractions of body half-size) so spots don't
     // re-randomise every frame and shimmer. Stable per fish for its lifetime.
@@ -451,6 +496,13 @@ class Fish {
     // nocturnal fish only swim while it is dark
     let visible = true;
     if (this.spec.nocturnal) visible = !phase.isDay;
+    this.jumpCooldown = Math.max(0, this.jumpCooldown - dt);
+    if (this.jump) {
+      this.updateJump(dt);
+      this.swimPhase += dt * 8 * this.spec.wobble.freq * 12;
+      this._vis = visible;
+      return;
+    }
     // wander steering
     this.wanderTimer -= dt;
     if (this.wanderTimer <= 0) { this.wander += rand(-0.9,0.9); this.wanderTimer = rand(0.6,2.2); }
@@ -479,6 +531,7 @@ class Fish {
         if (dist > 0.01) { desired = Math.atan2(dy, dx); ay += f; }
       }
     }
+    let chasedTowardSurface = false;
     if (pointer.active) {
       const dx = this.x - pointer.x, dy = this.y - pointer.y;
       const dist = Math.hypot(dx, dy);
@@ -486,6 +539,9 @@ class Fish {
         const f = (1 - dist/R);
         run += f;
         if (dist > 0.01) desired = Math.atan2(dy, dx);
+        chasedTowardSurface = performance.now() - lastMove < 180
+          && pointer.y > this.y + this.H*0.2
+          && dist < R * JUMP_TUNING.chaseRadius;
       }
     }
     // blend heading
@@ -504,6 +560,53 @@ class Fish {
     if (this.y > this.bandBot) { this.y -= (this.y - this.bandBot) * 2 * dt; }
     this.swimPhase += dt * (4 + this.speed*0.04) * this.spec.wobble.freq * 12;
     this._vis = visible;
+    if (chasedTowardSurface && this.startJump()) return;
+  }
+  startJump() {
+    if (this.jump || this.jumpCooldown > 0 || this._vis === false) return false;
+    const surface = surfaceHeightAt(this.x);
+    const depth = Math.max(0, this.y - surface);
+    if (depth > Math.min(JUMP_TUNING.maxDepth, this.L)) return false;
+    const direction = Math.cos(this.heading) >= 0 ? 1 : -1;
+    this.jump = {
+      vx: direction * Math.max(45, this.speed * JUMP_TUNING.horizontalMomentum),
+      vy: -Math.sqrt(2 * JUMP_TUNING.gravity * (depth + JUMP_TUNING.clearance)),
+      crossedSurface: false,
+      angle: 0,
+    };
+    return true;
+  }
+  updateJump(dt) {
+    const j = this.jump;
+    const previousY = this.y;
+    this.x += j.vx * dt;
+    this.y += j.vy * dt;
+    j.vy += JUMP_TUNING.gravity * dt;
+    if (this.x < this.L*0.5 || this.x > W-this.L*0.5) {
+      this.x = clamp(this.x, this.L*0.5, W-this.L*0.5);
+      j.vx *= -1;
+    }
+    const surface = surfaceHeightAt(this.x);
+    if (!j.crossedSurface && previousY >= surface && this.y < surface) {
+      j.crossedSurface = true;
+      spawnSplash(this.x, 0.65);
+    } else if (j.crossedSurface && j.vy > 0 && previousY < surface && this.y >= surface) {
+      spawnSplash(this.x, 1);
+      spawnBubble(this.x, surface + 8, 4, true);
+      this.finishJump();
+      return;
+    }
+    j.angle = clamp((j.vy / 420) * Math.sign(j.vx), -0.55, 0.55);
+  }
+  finishJump() {
+    if (!this.jump) return;
+    const direction = this.jump.vx >= 0 ? 1 : -1;
+    this.y = surfaceHeightAt(this.x) + Math.max(8, this.H*0.55);
+    this.heading = Math.atan2(0.32, direction);
+    this.wander = this.heading;
+    this.speed = this.baseSpeed;
+    this.jump = null;
+    this.jumpCooldown = JUMP_TUNING.cooldown;
   }
   turnToward(cur, target, maxStep) {
     let d = ((target - cur + Math.PI*3) % TAU) - Math.PI;
@@ -517,7 +620,7 @@ class Fish {
     ctx.save();
     ctx.globalAlpha *= this.spawnAlpha == null ? 1 : this.spawnAlpha;
     ctx.translate(this.x, this.y);
-    ctx.rotate(Math.sin(this.heading) * 0.25 * 0); // keep upright; sx flip for direction
+    ctx.rotate(this.jump ? this.jump.angle : 0);
     ctx.scale(right ? -1 : 1, 1);
     // glow halo
     if (this.spec.glow) {
@@ -1692,6 +1795,20 @@ function drawParticles(ctx, phase) {
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.beginPath(); ctx.arc(b.x - b.r*0.34, b.y - b.r*0.34, b.r*0.22, 0, TAU); ctx.fill();
     if (b.ring){ ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.arc(b.x,b.y,b.r+2,0,TAU); ctx.stroke(); }
+  }
+  // Surface foam and airborne droplets from jumping fish.
+  for (const s of splashes) {
+    const alpha = Math.max(0, s.life);
+    if (s.type === 'foam') {
+      ctx.strokeStyle = `rgba(235,250,255,${alpha*0.75})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y, s.r*1.7, s.r*0.42, 0, 0, TAU);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = `rgba(220,245,255,${alpha*0.9})`;
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
+    }
   }
 }
 
